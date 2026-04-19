@@ -6,62 +6,83 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# ===============================
+# PAGE CONFIG
+# ===============================
 st.set_page_config(page_title="BiasLens AI", layout="wide")
 
-st.title("📊 BiasLens AI - Behavioural Analytics Platform")
+# ===============================
+# HEADER
+# ===============================
+st.markdown("""
+# 📊 BiasLens AI
+### Behavioural Analytics Dashboard
+""")
 
 # ===============================
-# FILE UPLOAD
+# SIDEBAR CONTROLS
 # ===============================
-uploaded_file = st.file_uploader("Upload your Excel dataset", type=["xlsx"])
+st.sidebar.header("⚙️ Controls")
 
+uploaded_file = st.sidebar.file_uploader("Upload Dataset", type=["xlsx"])
+
+mode = st.sidebar.selectbox(
+    "Analysis Mode",
+    ["Behavioural Analysis", "Risk Profiling", "Performance Clustering"]
+)
+
+k = st.sidebar.slider("Number of Clusters", 2, 6, 3)
+
+# ===============================
+# MAIN LOGIC
+# ===============================
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    st.subheader("📄 Dataset Preview")
-    st.dataframe(df.head())
 
-    # ===============================
-    # MODE SELECTION
-    # ===============================
-    mode = st.selectbox("Select Analysis Mode", 
-                        ["Behavioural Analysis", "Risk Profiling", "Performance Clustering"])
+    df = pd.read_excel(uploaded_file)
+
+    st.subheader("📄 Data Preview")
+    st.dataframe(df.head(), use_container_width=True)
 
     # ===============================
     # FEATURE SELECTION
     # ===============================
-    st.subheader("📊 Select Features for Clustering")
-    selected_features = st.multiselect("Choose columns", df.columns)
+    selected_features = st.multiselect(
+        "Select Features for Analysis",
+        df.columns,
+        default=df.columns[:3]
+    )
 
     if len(selected_features) > 1:
 
         features = df[selected_features]
 
-        # ===============================
-        # SCALING
-        # ===============================
         scaler = StandardScaler()
         scaled_data = scaler.fit_transform(features)
 
-        # ===============================
-        # CLUSTER INPUT
-        # ===============================
-        k = st.slider("Select number of clusters", 2, 6, 3)
-
-        if st.button("Run Analysis"):
+        if st.button("🚀 Run Analysis"):
 
             kmeans = KMeans(n_clusters=k, random_state=42)
             df['Cluster'] = kmeans.fit_predict(scaled_data)
 
-            st.success("Clustering Completed!")
+            # ===============================
+            # KPI CARDS
+            # ===============================
+            col1, col2, col3 = st.columns(3)
+
+            col1.metric("Total Investors", len(df))
+            col2.metric("Clusters", k)
+            col3.metric("Features Used", len(selected_features))
+
+            st.markdown("---")
 
             # ===============================
-            # VISUALS
+            # VISUALS (PROPER GRID)
             # ===============================
             col1, col2 = st.columns(2)
 
             with col1:
-                st.subheader("📍 Cluster Scatter Plot")
-                fig, ax = plt.subplots()
+                st.subheader("📍 Cluster Map")
+                fig, ax = plt.subplots(figsize=(5,4))
                 ax.scatter(scaled_data[:,0], scaled_data[:,1], c=df['Cluster'])
                 ax.set_xlabel(selected_features[0])
                 ax.set_ylabel(selected_features[1])
@@ -71,12 +92,15 @@ if uploaded_file:
                 st.subheader("📊 Cluster Distribution")
                 st.bar_chart(df['Cluster'].value_counts())
 
-            # Heatmap
-            st.subheader("🔥 Cluster Behaviour Heatmap")
-            heatmap_data = df.groupby('Cluster')[selected_features].mean()
-            fig2, ax2 = plt.subplots()
-            sns.heatmap(heatmap_data, annot=True, ax=ax2)
+            # ===============================
+            # HEATMAP (FIXED SIZE)
+            # ===============================
+            st.subheader("🔥 Behaviour Heatmap")
+            fig2, ax2 = plt.subplots(figsize=(6,4))
+            sns.heatmap(df.groupby('Cluster')[selected_features].mean(), annot=True, ax=ax2)
             st.pyplot(fig2)
+
+            st.markdown("---")
 
             # ===============================
             # BEHAVIOUR CLASSIFICATION
@@ -96,31 +120,27 @@ if uploaded_file:
                     score -= 2
 
                 if score >= 3:
-                    return "Overconfidence Bias"
+                    return "Overconfidence"
                 elif score <= -2:
-                    return "Loss Aversion Bias"
+                    return "Loss Aversion"
                 elif score < 0:
-                    return "Risk-Averse Behaviour"
+                    return "Risk-Averse"
                 else:
-                    return "Balanced Behaviour"
+                    return "Balanced"
 
-            df['Behaviour_Type'] = df.apply(classify, axis=1)
+            df['Behaviour'] = df.apply(classify, axis=1)
 
-            st.subheader("🧠 Behaviour Classification")
-            st.dataframe(df[['Cluster','Behaviour_Type']])
+            st.subheader("🧠 Behaviour Insights")
+            st.dataframe(df[['Cluster','Behaviour']], use_container_width=True)
 
             # ===============================
-            # INSIGHTS
+            # DOWNLOAD BUTTON ✅
             # ===============================
-            st.subheader("📌 Cluster Insights")
+            csv = df.to_csv(index=False).encode('utf-8')
 
-            for cluster in sorted(df['Cluster'].unique()):
-                cluster_data = df[df['Cluster'] == cluster]
-
-                if 'Risk_Level' in df.columns and 'Trade_Frequency' in df.columns:
-                    if cluster_data['Risk_Level'].mean() > df['Risk_Level'].mean():
-                        insight = "High-risk investors → Possible OVERCONFIDENCE"
-                    else:
-                        insight = "Moderate or low-risk behaviour → BALANCED"
-
-                st.write(f"Cluster {cluster}: {insight}")
+            st.download_button(
+                "⬇️ Download Results",
+                csv,
+                "biaslens_results.csv",
+                "text/csv"
+            )
